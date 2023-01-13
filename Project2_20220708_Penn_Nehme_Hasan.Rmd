@@ -1,0 +1,636 @@
+---
+title: "PHC 6701: Project 2"
+subtitle: "Wrangling Data with dplyr"
+author: "Alvonee, Lea and Tanvir"
+date: "2022-07-08"
+output: word_document
+toc: TRUE
+---
+
+
+
+
+# Introduction 
+For this project, we investigated the demographic transition that impacts public
+health worldwide by utilizing two different sources to obtain the data sets. 
+This data can give insight into significant world events that emphasized public
+health disparities and how resources could have been allocated at the time.  
+
+The data set that consisted of the Continents/Regions was downloaded from Canvas,
+while the remaining five data sets were downloaded from the gapminder website  <https://www.gapminder.org/data/> and included: infant mortality (rate per 
+1000 births), life expectancy (years), babies per woman (total fertility), the 
+total population, and the total GDP (PPP$, inflation-adjusted).
+
+The variables within the gapminder data included different characteristics of 
+the countries of different continents, their income, population size, life 
+expectancy as well as infant mortality and fertility rates between the years of 
+1799 and 2099. 
+
+Before the analysis was performed, it is important to note that we calculated 
+the gdpPerCap and then converted the population size into millions. We also 
+performed a sanity check with the original `dslabs` gapminder data. The purpose 
+of this was to randomly cross-check our data and ensure that it is consistent 
+and functional.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 9, 
+  fig.height = 5, 
+  dpi = 720
+)
+```
+
+```{r load-dataset}
+# Load required libraries
+library(dslabs)
+library(ggpubr)
+library(tidyverse)
+
+# load required datasets
+countryRegions_df <- read_csv("data/country_regions_table_20220628.csv")
+population_df <- read_csv("data/population_total.csv") %>% 
+  pivot_longer(!country, names_to = "year", values_to = "population")
+totalGdp_df <- read_csv("data/total_gdp_ppp_inflation_adjusted.csv") %>% 
+  pivot_longer(!country, names_to = "year", values_to = "gdp")
+lifeExpectancy_df <- read_csv("data/life_expectancy_years.csv") %>% 
+  pivot_longer(!country, names_to = "year", values_to = "life_expectancy")
+totalFertility_df <- read_csv("data/children_per_woman_total_fertility.csv") %>% 
+  pivot_longer(!country, names_to = "year", values_to = "fertility")
+infantMort_df <- read_csv("data/infant_mortality_rate_per_1000_births.csv") %>% 
+  pivot_longer(!country, names_to = "year", values_to = "infant_mortality")
+```
+
+```{r inspact_numeric, results='hide'}
+# Inspect all numeric units
+str_replace_all(population_df$population, pattern = "\\d", replacement = "") %>% 
+  table()
+str_replace_all(totalGdp_df$gdp, pattern = "\\d", replacement = "") %>% 
+  table()
+```
+
+```{r change-to-numeric}
+population_df$population <- str_replace_all(
+  population_df$population, c("k" = "e3", "M" = "e6", "B" = "e9")
+) %>% 
+  as.numeric()
+
+totalGdp_df$gdp <- str_replace_all(
+  totalGdp_df$gdp, c("M" = "e6", "B" = "e9", "TR" = "e12")
+) %>% 
+  as.numeric() 
+```
+
+```{r join-dataset}
+gapminder_df <- 
+  full_join(countryRegions_df, population_df, by = "country") %>% 
+  full_join(., totalGdp_df, by = c("country", "year")) %>% 
+  full_join(., lifeExpectancy_df, by = c("country", "year")) %>% 
+  full_join(., totalFertility_df, by = c("country", "year")) %>% 
+  full_join(., infantMort_df, by = c("country", "year"))
+```
+
+```{r dataset-preparation}
+# The dataset is provided in the gapminder library
+gapminder_df <-
+  as_tibble(gapminder_df) %>% 
+  mutate(
+  gdpPerCap = round(gdp / population, 0),
+  # convert the population size in millions
+  population = round(population / 1000000, 2),
+  life_expectancy = round(life_expectancy, 1),
+  year = as.numeric(year)
+  ) %>% 
+  select(
+    country, year, infant_mortality, life_expectancy,
+    fertility, population, gdp, gdpPerCap, continent, region
+  ) %>%
+  mutate_at(vars(country), factor) 
+
+# write_csv(gapminder_df, "data/gapminder_df.csv")
+# to save newely created dataset
+```
+
+```{r data-summary, eval=FALSE}
+summary(gapminder_df)
+```
+
+
+
+## The Bubble Chart
+
+
+### The Bubble Chart--Single Year
+
+Using the GapMinder website, we attemtped to replicate the bubble chart for the 
+year 2001.
+
+```{r bubble-chart}
+ggplot(
+  data = gapminder_df %>% 
+    filter(year == "2001")
+) +
+  
+  aes(
+    x = gdpPerCap, 
+    y = life_expectancy,
+    size = population,
+    color = continent
+  ) +
+  scale_x_log10() +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "GDP per Capita vs Life Expentency (2001)", 
+    tag = "Figure 1",
+    caption = "Source:Gapminder",
+    x = "GDP per Capita",
+    y = "Life Expentency"
+  ) +
+  
+  geom_point(alpha = 0.7) +
+  scale_size(
+    range = c(0.5, 15), 
+    name = "Population (M)"
+  ) 
+```
+
+Figure 1 demonstrates the gapminder data  that shows the GDP per capita (income)
+on the X-axis vs. life expectancy on the Y-axis  in the year 2001. On the graph,
+the colors represent the continents while the size of the population is 
+represented by the size of the dots. For example as shown by the legend, teal 
+colored dots represent African countries while orange dots represent countries 
+from the Americas. The size of the dot reveals the size of the population. 
+
+It was hypothesized that Western countries would have a higher life expectancy, 
+and a higher income than other countries, whereas Asian countries would have 
+the larger population size. Moreover, it is hypothesized that countries with a 
+higher GDP per Capita (income) would show a longer life expectancy outcome of the
+population. This is because a better quality of life and health status is 
+reflective of the socioeconomic conditions of the individual. Once the statistics 
+per country were plotted, it was noted that Asia had the largest population. 
+Europe and the Americas had  a much higher life expectancy than that of 
+Africa, as expected. 
+
+This indicates that disparities in African countries still persist and there 
+need to be adequate resources supplied to increase economic growth, decrease 
+mortality rates and thus increasing life expectancy. 
+
+
+### The Bubble Chart over Time
+We chose the following years (1960, 1980, 1990, and 2011) in the modern era to 
+evaluate the life expectancy based on income.
+
+```{r bubble-chart-modern-era}
+gapminderModern_df <- gapminder_df %>%
+  filter(year %in% c(2011, 1990, 1980, 1960)) 
+
+ggplot(data = gapminderModern_df) +
+  
+  aes(
+    x = gdpPerCap, 
+    y = life_expectancy,
+    size = population,
+    color = continent
+  ) +
+  scale_x_log10() +
+  scale_y_log10(breaks = c(40, 50, 60, 70, 80)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "GDP per Capita vs Life Expentency for Modern Era", 
+    tag = "Figure 2",
+    x = "GDP per Capita",
+    y = "Life Expentency"
+  ) +
+  
+  geom_point(alpha = 0.7) +
+  scale_size(
+    range = c(0.5, 15), 
+    name = "Population (M)"
+  ) +
+  facet_wrap(~year)
+```
+
+Figure 2 also plots the GDP per Capita (income) on the x-axis vs. life 
+expectancy on the y-axis. However, this figure takes into consideration the 
+modern era and compares worldwide data across 4 different years: 1960, 1980, 
+1990 and 2011. 
+
+Just like figure 1, the colors in figure 2 represent the continents while the 
+size of the population is represented by the size of the dots. For example as 
+shown by the legend, teal colored dots represent African countries while orange 
+dots represent countries from the Americas. The size of the dot reveals the size
+of the population.
+
+It is important to consider key events that occurred during those decades which 
+could reflect the major changes seen in the graphs.
+
+* 1960 had some major events like the Cold War as well as the Vietnam War. 
+* 1980's event consisted of a major recession and an increase in unemployment 
+worldwide. 
+* 1990 was a positive year globally. 
+* 2011 a continuation in the recovery of the global economy. 
+
+For this reason, we hypothesize that over the years, there was an increase in 
+the GDP per capita as the global economy improved with a decrease in world wars 
+and instabilities. One important finding is that the life expectancy of Asian 
+countries increased since the 1960s while that of African countries had a slower
+trajectory.
+
+This demonstrates that when there is more political and economic instability 
+worldwide, there will be a lack of resources, more disparities and poorer life 
+expectancy. 
+
+
+
+## The Growth Chart
+
+
+### GDP per Capita
+We plotted the GDP er capita (income) for 5 countries: China, Russia, the US, 
+India, and Bangladesh between 1960 and 2016. 
+
+```{r GDP-per-capita-over-time}
+gapminderGdp_df <- 
+  gapminder_df %>% 
+  # Select only required variables
+  select(gdpPerCap, year, country, infant_mortality) %>% 
+  filter(
+    country %in% c("China", "Russia", "United States", "India", "Bangladesh")
+  ) %>% 
+  filter(year >= 1948 & year <= 2016)
+
+ggplot(data = gapminderGdp_df) +
+  
+  aes(
+    x = year,
+    y = gdpPerCap,
+    color = country
+  ) +
+  scale_x_continuous(breaks = seq(1948, 2016, 10)) +
+  scale_y_log10() +
+  scale_color_brewer(palette = "Dark2") +
+  labs (
+    title = "GDP per Capita  (1948 - 2016)",
+    tag = "Figure 3",
+    x = "Year",
+    y = "GDP per Capita",
+  ) +
+  
+  geom_line(size = 1) 
+```
+
+Figure 3 illustrates the GDP per capita (income) which falls on the y-axis, 
+between the years of 1960 to 2011 (x-axis) for 5 different countries: Bangladesh (seafoam green), China (orange), India (purple), Russia (pink), and the United 
+States (dark green). 
+
+It was hypothesized that over time, the GDP per capita would increase for all 5 
+countries since there is economic growth, urbanization, technology, more 
+education and better access to resources. Once the data was plotted, it was 
+demonstrated that there was indeed an overall growth curve for all 5 countries. 
+However, it is important to note that for Russia, the curve does not begin until
+the late 80s-early 90s followed by a dip in income between the years of 1990 and
+2000. This could have been attributed to the fallout of the Soviet Union making
+the establishment of Russia difficult and burdensome on the economy. 
+Additionally, the United States' GDP per capita since the 60s had been well over
+$10,000 and it could have been due to its political and economical layout 
+emphasizing a capitalistic country compared to that of Russia and China. 
+
+On the other hand, 1971 was the year that Bangladesh gained its independence 
+following the Liberation War between India and Pakistan. Then, towards the end 
+of 1973 the Bengali people had endured extreme famine, one of the worst recorded
+famines in the 20th century, which led to an extremely high mortality rate of 
+approximately 1.5 million people. Since then, this country is one of the many that
+has been very slowly developing which is demonstrated by their gradually increasing
+trajectories of GDP per Capita. China’s infant mortality rate trend is a bit 
+interesting since overall it had a decrease rate expect for a slight increase in
+the 1950s. Chairman Mao Zedong's 'Great Leap Forward' failed to industrialize 
+the country which led to a famine, thus increased the infant mortality rates. 
+<https://www.macrotrends.net/countries/BGD/bangladesh/gdp-per-capita>
+<https://www.statista.com/statistics/1042745/china-all-time-infant-mortality-rate/>
+
+
+### Infant Mortality
+We plotted infant mortality for the same 5 countries: China, Russia, the US, 
+India, and Bangladesh between the years 1960 and 2016.
+
+```{r infant-mortality-over-time}
+gapminderInfmort_df <- 
+  gapminder_df %>% 
+  # Select only required variables
+  select(gdpPerCap, year, country, infant_mortality) %>% 
+  filter(
+    country %in% c("China", "Russia", "United States", "India", "Bangladesh")
+  ) %>% 
+  filter(year >= 1948 & year <= 2016)
+
+ggplot(data = gapminderInfmort_df) +
+  
+  aes(
+    x = year,
+    y = infant_mortality,
+    color = country
+  ) +
+  scale_x_continuous(breaks = seq(1948, 2016, 10)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs (
+    title = "Infant Morlatilty (1948 - 2016)",
+    tag = "Figure 4",
+    x = "Year",
+    y = "Infant Mortality per Thousand"
+  ) +
+  
+  geom_line(size = 1) 
+```
+
+Figure 4 plots infant mortality rates per 1,000 on the y-axis over the years 
+beginning 1960 up until 2011, labeled on the x-axis. Just like figure 3, there 
+are  5 different countries: Bangladesh (seafoam green), China (orange), 
+India (purple), Russia (pink), and the United States (dark green). 
+
+It was hypothesized that those who have the lowest GDP per capita will have the 
+highest infant mortality rates. 
+The results reveal that this hypothesis was confirmed. Additionally, it is 
+important to note that we observed a major decrease in infant mortality rates
+due to the increase in the GDP per capita (income) over the years in all 5 
+countries. 
+
+One noteworthy trend is that of China (orange) which had a severe dip in infant 
+mortality rates between 1960 and 1970. It is noted that during this time, China 
+had implemented a "Patriotic Health Campaign" under Mao which helped establish 
+a wide range of public health activities that increased health promotion and 
+helped to decrease disparities and health burdens including infant mortality 
+rates as they transitioned into a country with more socialist beliefs. <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4331212/> 
+
+This is a really significant improvement and has a lot of implications for the 
+future of public health in order to help decrease infant mortality rates in 
+other countries that are still developing. 
+
+
+
+## Rank Charts
+
+
+### Population Rank by GDP/Capita
+We ranked and plotted the countries by their population sizes for the year 2011,
+and filled the bars by the GDP per capita of the top 15 countries by their 
+population size.
+
+```{r countries-gdp }
+ggplot(
+  data = filter(gapminder_df, year == "2011") %>%
+    arrange(desc(population)) %>%
+    # Select top 15 countries based on population size
+    head(n = 15)
+) +
+  
+  aes(
+    x = population,
+    y = reorder(country, population),
+    fill = gdpPerCap
+  ) +
+  labs(
+    title = "Rank of countries by Population Sizes (2011)",
+    tag = "Figure 5",
+    x = "Population (M)",
+    y = "Country"
+  ) +
+  
+  geom_bar(stat = "identity")
+```
+
+Figure 5 shows out the top 15 countries (y-axis) and their population size 
+(x-axis) while the color reflected the GDP per capita (income). The darker blue 
+color is a representation of the countries with lower GDP per capita and the 
+lighter blue color reflects the coutnries with the highesr GDP per capita. 
+
+It is hypothesized that the countries with a larger population will have a 
+smaller GDP per capita. The reason behind this hypothesis is that since the GDP 
+is divided by population size this means that a larger population would be more
+difficult to sustain economically. 
+
+The graph has actually confirmed our hypothesis with the exception of two 
+countries: the U.S. and Japan. Even though the U.S. has a similar population to 
+Indonesia and Brazil, or Japan having a similar population to Mexico and Russia,
+both countries (U.S. and Japan) have a much higher GDP and this can be 
+attributed to the developed infrastructure and technology of the two countries 
+compared to the rest. 
+
+This is important because it indicates that when the GDP per capita is higher 
+per country, it is reflected in better health outcomes of the population and an 
+overall prosperity.
+
+
+### Infant Mortality by Population
+We ranked and plotted the countries by their infant mortality rates for the year
+2011, and filled the bars by the population of the top 15 countries with the 
+highest infant mortality rates.
+
+```{r countries-infant-mortality}
+ggplot(
+  data = filter(gapminder_df, year == "2011") %>%
+    arrange(desc(infant_mortality)) %>%
+    # Select top 15 countries based on infant mortality
+    head(n = 15)
+) +
+  
+  aes(
+    x = infant_mortality,
+    y = reorder(country, infant_mortality),
+    fill = population
+  ) +
+  labs(
+    title = "Rank of countries by Infant Mortality Rates (2011)",
+    tag = "Figure 6",
+    x = "Infant Mortality",
+    y = "Country"
+  ) +
+  
+  geom_bar(stat = "identity") 
+```
+
+In the figure above, the x-axis labels infant mortality rate per 1000 and on the
+y-axis it labels the top 15 countries with highest infant mortality rates. The 
+dark blue indicates countries with smaller populations while lighter blue 
+countries are those that reflect larger populations. 
+
+It is hypothesized that those smaller countries will have higher infant 
+mortality rates due to lack of resources, infrastructure, higher poverty rates, 
+etc. 
+
+The general trend that is observed shows that smaller countries have higher 
+infant mortality rates with the exception of Nigeria and Pakistan. Pakistan 
+actually had a population of 183.3 million individuals in 2011, whereas Nigeria 
+had a population of 162.8 million individuals. In 2011, the election that took 
+place in Nigeria actually led to economic and political conflicts within the 
+people which led to some famines and lack of resources thus the higher observed 
+infant mortality rates. Whereas in Pakistan, their economy was not stable due to
+the political instability and civil unrest. In Pakistan, infant mortality is 
+more sensitive to economic fluctuations, especially during negative shocks to GDP.
+In Nigeria, inadequate health care services remains a front line problem in 
+addressing infant mortality. In addition to this, the risk of childhood mortality
+are lowest among mothers with formal education, mothers living in urban areas,
+and mothers who were older.
+<https://bmcpublichealth.biomedcentral.com/articles/10.1186/s12889-017-4420-7>
+
+The results emphasize the need for more public health interventions such as 
+better resources for pregnant mothers and prenatal care that can help decrease 
+the rates of malnutrition in infants. Additionally, if better education is 
+implemented regarding sex ed and condom usage could prevent economic family 
+burden through better family planning. 
+
+
+
+## Additional Graphs
+
+
+### Bubble Chart for Differnt Years
+
+For year 1860, 1910, 1960, and 2010 we evaluated the life expectancy based on 
+income and similar trends were found in figure 7 as in figure 2. 
+
+```{r bubble-chart-additional}
+gapminderSubset_df <- gapminder_df %>%
+  filter(year %in% c(2011, 1990, 1980, 1960)) 
+
+ggplot(data = gapminderSubset_df) +
+  
+  aes(
+    x = gdpPerCap, 
+    y = life_expectancy,
+    size = population,
+    color = continent
+  ) +
+  scale_x_log10() +
+  scale_y_log10(breaks = c(40, 50, 60, 70, 80)) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "GDP per Capita vs Life Expentency for Modern Era", 
+    tag = "Figure 7",
+    x = "GDP per Capita",
+    y = "Life Expentency"
+  ) +
+  
+  geom_point(alpha = 0.7) +
+  scale_size(
+    range = c(0.5, 15), 
+    name = "Population (M)"
+  ) +
+  facet_wrap(~year)
+```
+
+
+### Infant Mortality by gdpPerCap
+
+```{r samall-medium}
+# Exclude Oceania from population-matched analysis
+gapminder2000MS_df <- 
+  gapminder_df %>% 
+  filter(year %in% c(1960, 1970, 2000, 2010)) %>% 
+  filter(continent != "Oceania") %>% 
+  filter(
+    population > 2.3 & population < 7.6
+  )
+
+ggplot(data = gapminder2000MS_df) +
+  aes(
+    x = gdpPerCap,
+    y = infant_mortality,
+    color = continent
+  ) + 
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(
+    title = "GDP per Capita vs Infant Mortality for Small to Medium Countries",
+    tag = "Figure 8A",
+    x = "GDP per Capita", 
+    y = "Infant Mortality", 
+  ) +
+  
+  geom_point(size = 2) +
+  facet_wrap(~year)
+```
+
+```{r medium-large}
+# Exclude Oceania from population-matched analysis
+gapminder2000ML_df <- 
+  gapminder_df %>% 
+  filter(year %in% c(1960, 1970, 2000, 2010)) %>% 
+  filter(continent != "Oceania") %>% 
+  filter(
+    population > 7.6 
+  )
+
+ggplot(data = gapminder2000ML_df) +
+  aes(
+    x = gdpPerCap,
+    y = infant_mortality,
+    color = continent
+  ) + 
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(
+    title = "GDP per Capita vs Infant Mortality for Medium to Large Countries",
+    tag = "Figure 8B ",
+    x = "GDP per Capita", 
+    y = "Infant Mortality", 
+  ) +
+  
+  geom_point(size = 2) +
+  facet_wrap(~year)
+```
+
+In figure 8, we created a visualization chart to test the running hypothesis that 
+countries with higher infant mortality would have lower GDP per Capita. We 
+purposely selected 4 continents, Africa (coral), The Americas (green), Asia 
+(teal), and Europe (periwinkle) to cross-match and compare this trend. We then
+divided the countries into small (2.3 million) to medium (7.6 million) population
+sized countries (figure 8A) and medium to large sized countries (figure 8B) varying
+above 7.6 million people in size. We excluded Oceania as this continent has only 
+two large population sized countries (New Zealand and Australia), which could 
+have potentially skewed the relationship of this trend. We then divided each figure
+into four separate years (1960, 1970, 2000 and 2010).On the X-axis, we plotted 
+the GDP per Capita and on the Y-axis we plotted infant mortality. It is important
+to note that the values are plotted on a log10 scale. 
+
+As stated in figure 6, we had expected that countries with higher GDP per capita
+would have lower infant mortality rates. This is due to the importance of 
+socioeconomic conditions, like household income, education status and
+environment, which are reflective of health status, like that of birth 
+weight and mortality rates. <https://www-ncbi-nlm-nih-gov.ezproxy.fiu.edu/pmc/articles/PMC3791093/> <https://genus.springeropen.com/articles/10.1186/s41118-019-0071-0>.
+
+As we can see from both figures, there is a clear inverse relationship between GDP 
+per Capita and infant mortality rate. However, it is interesting to look at some
+outliers like that of Asia. In 1960 and in 1970, Japan was the only country to 
+have an extremely low infant mortality rate and a really high GDP per Capita. In
+the 60s and 70s, Japan was booming technologically and industrially.
+Whereas in 2000 and in 2010, Saudi Arabia was the outlier of all the Asian countries 
+due to its wealth from the Oil industry which led to an increase in economic 
+standard with a very good livelihood satisfaction. 
+
+Overall, there is an inverse relationship between GDP per Capita and infant 
+mortality rates across all years and across all population sizes. Additionally,
+there is an overall increase in GDP per Capita and a decrease in infant mortality
+rates across all countries. 
+  
+
+
+
+# Conclusion
+After seeing the graphs of the countries in the different continents over time, 
+some key statistics and conclusions that were observed are as follows:
+
+* Countries with a higher GDP per capita (income), showed a longer life 
+expectancy outcome of the population. 
+* Overall, lower life expectancies were mostly observed in lesser developed 
+countries like that of Africa. 
+* Overtime, the GDP per capita was increasing for all the countries with an 
+improvement in life expectancy.
+* It was observed in figure 6 and confirmed in figure 8 that countries with a 
+lower GDP rate had higher infant mortality rates. Additionally, Europe was the 
+leading continent in low infant mortality rates and higher GDP per Capita across
+all years and all population sizes. 
+* It is hard to implement public health interventions in countries with larger 
+populations and smaller GDP per capita due to the lack of resources. 
